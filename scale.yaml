@@ -1,0 +1,106 @@
+heat_template_version: 2014-10-16
+description: >
+Heat template used to upscale or downscale a group of instances
+when an alarm is trrigred
+
+
+resources:
+  scaleup_group:
+    type: OS::Heat::AutoScalingGroup
+    properties:
+      #time between two successive scaleups
+      cooldown: 600
+      #start with one instance
+      desired_capacity: 1
+      #stop scaling up the group when the number of instances reachs 2
+      max_size: 2
+      #stop scaling down the group when the number of instances reaches 1
+      min_size: 1
+      #Heat refers to this code block when launching a new instance
+      resource:
+        type: OS::Nova::Server::fedora
+
+ #defining the scaleup_policy for our heat engine
+  scaleup_policy:
+    type: OS::Heat::ScalingPolicy
+    properties:
+      #action type
+      adjustment_type: change_in_capacity
+      #the group to scaleup
+      auto_scaling_group_id: { get_resource: scaleup_group }
+      cooldown: 600
+      #add only one instance per scaleup
+      scaling_adjustment: 1
+
+ #defining the scaledown_policy
+  scaledown_policy:
+    type: OS::Heat::ScalingPolicy
+    properties:
+      adjustment_type: change_in_capacity
+      auto_scaling_group_id: { get_resource: scaleup_group }
+      cooldown: 600
+      scaling_adjustment: -1
+
+ #Defining alarm_actions
+ #cpu alarms
+ #Heat leans on the alarm above to upscale the group
+  cpu_alarm_high:
+    type: OS::Ceilometer::Alarm
+    properties:
+      #counter name (metric) KPI : used_cpu*100/total_cpu
+      meter_name: cpu_util
+      #avg , min , max , we will use avg in our case
+      statistic: avg
+      period: 600
+      #multiplication factor : the alarm will be evaluted every evaluation_periods*period
+      evaluation_periods: 1
+      #cpu threshold , unit : %
+      threshold: 50
+      #when an alarm is triggred upscale the group
+      alarm_actions:
+        - {get_attr: [scaleup_policy, alarm_url]}
+      comparison_operator: ge
+
+  cpu_alarm_low:
+    type: OS::Ceilometer::Alarm
+    properties:
+      meter_name: cpu_util
+      statistic: avg
+      period: 600
+      evaluation_periods: 1
+      threshold: 10
+      alarm_actions:
+        - {get_attr: [scaledown_policy, alarm_url]}
+      #less than ; lt
+      comparison_operator: lt
+
+ #RAM alarms
+ #Heat leans on the ram alarm above to upscale the group
+  ram_alarm_high:
+    type: OS::Ceilometer::Alarm
+    properties:
+      #counter name (metric) resident RAM unit : Mo
+      meter_name: memory.resident
+      statistic: avg
+      period: 600
+      evaluation_periods: 1
+      threshold: 500
+      alarm_actions:
+        - {get_attr: [scaleup_policy, alarm_url]}
+      comparison_operator: ge
+
+ #RAM alarms
+ #Heat leans on the ram alarm above to upscale the group
+  IncomingPackets_alarm_high:
+   type: OS::Ceilometer::Alarm
+   properties:
+      #counter name (metric) : network.incoming.packets.rate
+      #when incoming packets rate is high it means that there are many users connected to the instance
+      meter_name: network.incoming.packets.rate
+      statistic: avg
+      period: 600
+      evaluation_periods: 1
+      threshold: 50
+      alarm_actions:
+        - {get_attr: [scaleup_policy, alarm_url]}
+      comparison_operator: ge

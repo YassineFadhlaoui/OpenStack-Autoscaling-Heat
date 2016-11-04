@@ -1,0 +1,22 @@
+heat_template_version: 2014-10-16
+description: fedora instance
+
+resources:
+  floating_ip:
+    type: OS::Nova::FloatingIP
+    properties:
+      pool: pub
+
+  fedoraInstance:
+    type: OS::Nova::Server
+    properties:
+      flavor: m1.custom
+      image: fedora
+      networks:
+        - network: private
+
+  association:
+    type: OS::Nova::FloatingIPAssociation
+    properties:
+      floating_ip: { get_resource: floating_ip }
+      server_id: { get_resource: fedoraInstance }
